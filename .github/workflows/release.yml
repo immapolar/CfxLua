@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.0-dev' }}
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git cmake build-essential libreadline-dev
+
+      - name: Build VM
+        run: make vm
+
+      - name: Package artifact
+        run: |
+          VERSION_CLEAN="${VERSION#v}"
+          PKG_DIR="dist/pkg-linux-${{ matrix.arch }}"
+          ASSET="cfxlua-${VERSION_CLEAN}-linux-${{ matrix.arch }}.tar.gz"
+          mkdir -p "$PKG_DIR/bin" "$PKG_DIR/runtime" "$PKG_DIR/vm/build"
+          cp -a bin/cfxlua "$PKG_DIR/bin/"
+          cp -a runtime/. "$PKG_DIR/runtime/"
+          cp -a vm/build/cfxlua-vm "$PKG_DIR/vm/build/"
+          cp -a tools/release/install.sh "$PKG_DIR/install.sh"
+          chmod +x "$PKG_DIR/install.sh"
+          tar -C dist -czf "dist/$ASSET" "pkg-linux-${{ matrix.arch }}"
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+
+  macos:
+    name: macOS tarball
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: brew install cmake readline
+
+      - name: Build VM
+        run: make vm
+
+      - name: Package artifact
+        run: |
+          VERSION_CLEAN="${VERSION#v}"
+          ASSET="cfxlua-${VERSION_CLEAN}-macos.tar.gz"
+          PKG_DIR="dist/pkg-macos"
+          mkdir -p "$PKG_DIR/bin" "$PKG_DIR/runtime" "$PKG_DIR/vm/build"
+          cp -a bin/cfxlua "$PKG_DIR/bin/"
+          cp -a runtime/. "$PKG_DIR/runtime/"
+          cp -a vm/build/cfxlua-vm "$PKG_DIR/vm/build/"
+          cp -a tools/release/install.sh "$PKG_DIR/install.sh"
+          chmod +x "$PKG_DIR/install.sh"
+          tar -C dist -czf "dist/$ASSET" "pkg-macos"
+          echo "ASSET=$ASSET" >> "$GITHUB_ENV"
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+
+  windows:
+    name: Windows installer
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build VM
+        shell: pwsh
+        run: |
+          git clone --depth=1 --branch luaglm-dev/cfx https://github.com/citizenfx/lua.git vendor/citizenfx-lua
+          git -C vendor/citizenfx-lua submodule update --init --recursive
+          New-Item -ItemType Directory -Force -Path vm/build | Out-Null
+          cmake -S vendor/citizenfx-lua -B vm/build -DCMAKE_BUILD_TYPE=Release -DGRIT_POWER_COMPOUND=ON -DGRIT_POWER_SAFENAV=ON -DGRIT_POWER_INTABLE=ON -DGRIT_POWER_JOAAT=ON -DGRIT_POWER_DEFER=ON
+          cmake --build vm/build --config Release
+          if (Test-Path vm/build/Release/lua.exe) {
+            Copy-Item vm/build/Release/lua.exe vm/build/cfxlua-vm.exe -Force
+          } elseif (Test-Path vm/build/lua.exe) {
+            Copy-Item vm/build/lua.exe vm/build/cfxlua-vm.exe -Force
+          } else {
+            throw "lua.exe not found"
+          }
+
+      - name: Prepare installer payload
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/windows/bin | Out-Null
+          New-Item -ItemType Directory -Force -Path dist/windows/runtime | Out-Null
+          New-Item -ItemType Directory -Force -Path dist/windows/vm/build | Out-Null
+          Copy-Item bin/cfxlua.cmd dist/windows/bin/cfxlua.cmd -Force
+          Copy-Item bin/cfxlua.ps1 dist/windows/bin/cfxlua.ps1 -Force
+          Copy-Item -Recurse runtime/* dist/windows/runtime -Force
+          Copy-Item vm/build/cfxlua-vm.exe dist/windows/vm/build/cfxlua-vm.exe -Force
+
+      - name: Normalize version string
+        shell: pwsh
+        run: |
+          $v = '${{ github.ref_name }}'
+          if ($v.StartsWith('v')) { $v = $v.Substring(1) }
+          "CFXLUA_VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build Inno Setup installer
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: packaging/windows/cfxlua.iss
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
