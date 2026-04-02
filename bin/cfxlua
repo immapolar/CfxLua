@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# =============================================================================
+# bin/cfxlua  —  CfxLua Standalone Interpreter Wrapper
+# =============================================================================
+# Install: copy or symlink this file into a directory on your PATH.
+#   sudo ln -s "$(pwd)/bin/cfxlua" /usr/local/bin/cfxlua
+#
+# Usage:
+#   cfxlua <script.lua> [arg1 arg2 ...]
+#   cfxlua --version
+#   cfxlua --help
+#
+# Environment variables:
+#   CFXLUA_VM        Override path to the cfxlua-vm binary (default: auto-detect)
+#   CFXLUA_RUNTIME   Override path to the runtime/ directory
+#   CFXLUA_RESOURCE  Override the resource name (default: script basename)
+# =============================================================================
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Resolve the directory this script lives in, following symlinks.
+# This is the canonical way to locate co-installed files in POSIX sh.
+# ---------------------------------------------------------------------------
+_self_dir() {
+    local source="${BASH_SOURCE[0]}"
+    while [ -L "$source" ]; do
+        local dir
+        dir="$(cd -P "$(dirname "$source")" && pwd)"
+        source="$(readlink "$source")"
+        [[ "$source" != /* ]] && source="$dir/$source"
+    done
+    cd -P "$(dirname "$source")" && pwd
+}
+
+SCRIPT_DIR="$(_self_dir)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# ---------------------------------------------------------------------------
+# Locate the cfxlua-vm binary.
+# Build system places it at: vm/build/lua  (renamed via Makefile install target)
+# We check several locations in priority order.
+# ---------------------------------------------------------------------------
+if [ -n "${CFXLUA_VM:-}" ]; then
+    VM_BIN="$CFXLUA_VM"
+elif [ -x "$PROJECT_DIR/vm/build/cfxlua-vm" ]; then
+    VM_BIN="$PROJECT_DIR/vm/build/cfxlua-vm"
+elif [ -x "$PROJECT_DIR/vm/build/lua" ]; then
+    VM_BIN="$PROJECT_DIR/vm/build/lua"
+elif command -v cfxlua-vm &>/dev/null; then
+    VM_BIN="$(command -v cfxlua-vm)"
+else
+    # Fall back to the system Lua 5.4 for development/testing without a built VM.
+    # NOTE: Without LuaGLM, vector types and power-patches won't be available.
+    if command -v lua5.4 &>/dev/null; then
+        VM_BIN="$(command -v lua5.4)"
+        echo "[cfxlua] WARNING: cfxlua-vm not found; using system lua5.4 (no LuaGLM extensions)" >&2
+    elif command -v lua &>/dev/null; then
+        VM_BIN="$(command -v lua)"
+        echo "[cfxlua] WARNING: cfxlua-vm not found; using system lua (no LuaGLM extensions)" >&2
+    else
+        echo "[cfxlua] FATAL: no Lua interpreter found." >&2
+        echo "  Build the VM:  cd $PROJECT_DIR && make" >&2
+        echo "  Or set:        export CFXLUA_VM=/path/to/lua" >&2
+        exit 1
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# Locate the runtime directory.
+# ---------------------------------------------------------------------------
+RUNTIME_DIR="${CFXLUA_RUNTIME:-$PROJECT_DIR/runtime}"
+BOOTSTRAP="$RUNTIME_DIR/bootstrap.lua"
+
+if [ ! -f "$BOOTSTRAP" ]; then
+    echo "[cfxlua] FATAL: bootstrap.lua not found at '$BOOTSTRAP'" >&2
+    echo "  Set CFXLUA_RUNTIME to the correct runtime directory." >&2
+    exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Handle special flags.
+# ---------------------------------------------------------------------------
+if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-v" ]; then
+    case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+        *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*)
+            printf "CfxLua 1.0.0  ·  © 2026 Polaris Naz\nLuaGLM 5.4  ·  Cfx.re"
+            ;;
+        *)
+            printf "CfxLua 1.0.0  -  (c) 2026 Polaris Naz\nLuaGLM 5.4  -  Cfx.re"
+            ;;
+    esac
+    exit 0
+fi
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ] || [ $# -eq 0 ]; then
+    case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+        *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*)
+            printf "CfxLua 1.0.0  ·  © 2026 Polaris Naz\nLuaGLM 5.4  ·  Cfx.re\n\n"
+            ;;
+        *)
+            printf "CfxLua 1.0.0  -  (c) 2026 Polaris Naz\nLuaGLM 5.4  -  Cfx.re\n\n"
+            ;;
+    esac
+    cat <<EOF
+Usage:
+  cfxlua <script.lua> [arg1 arg2 ...]
+  cfxlua --version
+  cfxlua -v
+  cfxlua --help
+  cfxlua -h
+
+Arguments:
+  <script.lua>      Run a Lua script via runtime/bootstrap.lua
+  [arg1 arg2 ...]   Passed through to the script as arg[1..n]
+  --version, -v     Print interpreter and VM version banner
+  --help, -h        Print this help message
+
+Environment:
+  CFXLUA_VM         Path to the cfxlua-vm binary  (default: auto-detect)
+  CFXLUA_RUNTIME    Path to the runtime/ directory (default: $PROJECT_DIR/runtime)
+  CFXLUA_RESOURCE   Resource name override         (default: script basename)
+
+Examples:
+  cfxlua my_resource/server.lua
+  cfxlua tests/run_tests.lua
+  CFXLUA_RESOURCE=my-resource cfxlua server.lua
+
+Build the VM:
+  cd $PROJECT_DIR && make
+EOF
+    exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Derive resource name from the script path (strip directory and extension).
+# Resources that use GetCurrentResourceName() get a sensible value.
+# ---------------------------------------------------------------------------
+SCRIPT_PATH="$1"
+SCRIPT_BASENAME="$(basename "$SCRIPT_PATH")"
+SCRIPT_RESOURCE="${SCRIPT_BASENAME%.*}"   # strip extension
+
+export CFXLUA_RESOURCE_NAME="${CFXLUA_RESOURCE:-$SCRIPT_RESOURCE}"
+export CFXLUA_BOOTSTRAP_PATH="$PROJECT_DIR"
+
+# ---------------------------------------------------------------------------
+# Inject the bootstrap path into Lua via a synthetic global.
+# We prepend a tiny chunk that sets __cfx_bootstrapPath before bootstrap.lua
+# runs, using Lua's -e flag.
+# ---------------------------------------------------------------------------
+INJECT="__cfx_bootstrapPath = '$(echo "$PROJECT_DIR" | sed "s/'/\\\\'/g")'"
+
+# Execute.
+# The `--` separator ensures script args aren't consumed by the Lua interpreter.
+exec "$VM_BIN" \
+    -e "$INJECT" \
+    "$BOOTSTRAP" \
+    "$@"
