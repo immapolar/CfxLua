@@ -84,10 +84,10 @@ fi
 if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-v" ]; then
     case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
         *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*)
-            printf "CfxLua 1.0.0  ·  © 2026 Polaris Naz\nLuaGLM 5.4  ·  Cfx.re"
+            printf "CfxLua 1.0.1  ·  © 2026 Polaris Naz\nLuaGLM 5.4  ·  Cfx.re"
             ;;
         *)
-            printf "CfxLua 1.0.0  -  (c) 2026 Polaris Naz\nLuaGLM 5.4  -  Cfx.re"
+            printf "CfxLua 1.0.1  -  (c) 2026 Polaris Naz\nLuaGLM 5.4  -  Cfx.re"
             ;;
     esac
     exit 0
@@ -96,10 +96,10 @@ fi
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ] || [ $# -eq 0 ]; then
     case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
         *[Uu][Tt][Ff]-8*|*[Uu][Tt][Ff]8*)
-            printf "CfxLua 1.0.0  ·  © 2026 Polaris Naz\nLuaGLM 5.4  ·  Cfx.re\n\n"
+            printf "CfxLua 1.0.1  ·  © 2026 Polaris Naz\nLuaGLM 5.4  ·  Cfx.re\n\n"
             ;;
         *)
-            printf "CfxLua 1.0.0  -  (c) 2026 Polaris Naz\nLuaGLM 5.4  -  Cfx.re\n\n"
+            printf "CfxLua 1.0.1  -  (c) 2026 Polaris Naz\nLuaGLM 5.4  -  Cfx.re\n\n"
             ;;
     esac
     cat <<EOF

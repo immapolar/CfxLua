@@ -117,11 +117,28 @@ Citizen.Wait = Wait
 -- We implement it as a single-fire CreateThread that waits first.
 -- ---------------------------------------------------------------------------
 function Citizen.SetTimeout(ms, fn)
+    local handle = { _cancelled = false }
     CreateThread(function()
         Wait(ms)
+        if handle._cancelled then
+            return
+        end
         fn()
     end)
+    return handle
 end
+
+function Citizen.ClearTimeout(handle)
+    if type(handle) ~= "table" then
+        return false
+    end
+    handle._cancelled = true
+    return true
+end
+
+-- FXServer exposes these as root-level aliases.
+SetTimeout = Citizen.SetTimeout
+ClearTimeout = Citizen.ClearTimeout
 
 -- ---------------------------------------------------------------------------
 -- Promise / Citizen.Await

@@ -134,6 +134,8 @@ end
 do
     local netReceived  = false
     local srvReceived  = false
+    RegisterNetEvent("test:net")
+    RegisterNetEvent("test:server")
     local h1 = AddEventHandler("test:net",    function() netReceived = true end)
     local h2 = AddEventHandler("test:server", function() srvReceived = true end)
 

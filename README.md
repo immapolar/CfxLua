@@ -2,7 +2,7 @@
 
 # **CfxLua**
 
-![Version](https://img.shields.io/badge/Version-1.0.0-brightgreen?style=for-the-badge)
+![Version](https://img.shields.io/badge/Version-1.0.1-brightgreen?style=for-the-badge)
 ![Lua](https://img.shields.io/badge/LuaGLM-5.4-blue?style=for-the-badge&logo=lua&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-orange?style=for-the-badge)
@@ -55,6 +55,7 @@ coroutine-based cooperative threading
 - **JSON / msgpack** — `json.encode`, `json.decode`, full msgpack
 - **Resource context** — `GetCurrentResourceName()` returns the correct value
 
+Explicitly excluding real FXServer C++ internals (libuv/ENet scheduling and transport semantics), real OneSync replication/network pipeline, and GTA V/RDR2 process-coupled engine behavior; these are well-understood limits, not implementation gaps.
 
 ### ⚠️ Client/Game Engine Scope
 

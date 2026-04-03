@@ -7,6 +7,7 @@
 #   make install    — install 'cfxlua' wrapper to PREFIX/bin (default /usr/local)
 #   make test       — run the test suite using the built VM (or system Lua)
 #   make stubs      — regenerate runtime/stubs.lua from cfxlua-vscode annotations
+#   make stubs-fivem — regenerate runtime/stubs_fivem_server.lua from local fivem clone
 #   make clean      — remove build artefacts (keeps cloned sources)
 #   make distclean  — remove everything including cloned repos
 #
@@ -29,7 +30,7 @@ LUA_BUILD  := vm/build
 VM_BIN     := $(LUA_BUILD)/cfxlua-vm
 
 # ---------------------------------------------------------------------------
-.PHONY: all vm install test stubs clean distclean help
+.PHONY: all vm install test stubs stubs-fivem clean distclean help
 
 all: vm
 
@@ -40,6 +41,7 @@ help:
 	@echo "  make install  Install cfxlua to $(PREFIX)/bin"
 	@echo "  make test     Run the test suite"
 	@echo "  make stubs    Regenerate runtime/stubs.lua from cfxlua-vscode"
+	@echo "  make stubs-fivem Regenerate runtime/stubs_fivem_server.lua from local fivem clone"
 	@echo "  make clean    Remove build artifacts"
 	@echo "  make distclean Remove build artifacts and vendor directory"
 	@echo ""
@@ -149,6 +151,13 @@ stubs: $(VSCODE_PATH)/.git
 	    > runtime/stubs_generated.lua
 	@echo "[cfxlua] Generated runtime/stubs_generated.lua"
 	@echo "         Review and merge into runtime/stubs.lua as needed."
+
+stubs-fivem:
+	@echo "[cfxlua] Generating server native fallback stubs from local fivem clone..."
+	$(shell command -v lua5.4 2>/dev/null || command -v lua) \
+	    tools/gen_fivem_server_stubs.lua fivem \
+	    > runtime/stubs_fivem_server.lua
+	@echo "[cfxlua] Generated runtime/stubs_fivem_server.lua"
 
 # ---------------------------------------------------------------------------
 # Clean

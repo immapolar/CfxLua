@@ -101,6 +101,8 @@ runModule("test_statebags.lua")
 runModule("test_json.lua")
 runModule("test_msgpack.lua")
 runModule("test_kvp.lua")
+runModule("test_server_native_surface.lua")
+runModule("test_fxserver_sim.lua")
 runModule("test_integration.lua")
 
 -- ---------------------------------------------------------------------------

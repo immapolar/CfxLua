@@ -12,16 +12,24 @@
 -- source so resources that inspect `source` don't crash.
 -- =============================================================================
 
-local _handlers = {}   -- { [eventName] = { [handle_id] = fn } }
-local _nextId   = 1
+local _handlers = {}     -- { [eventName] = { [handle_id] = fn } }
+local _safeNet = {}      -- { [eventName] = true }
+local _nextId  = 1
 
 -- ---------------------------------------------------------------------------
 -- Internal: fire all handlers registered for `name`
 -- Returns the number of handlers invoked.
 -- ---------------------------------------------------------------------------
-local function _fireEvent(name, src, ...)
+local function _fireEvent(name, src, isNet, ...)
     local bucket = _handlers[name]
     if not bucket then return 0 end
+
+    if isNet and not _safeNet[name] then
+        print(string.format(
+            "[cfxlua] event '%s' was not safe for net; dropping dispatch", name
+        ))
+        return 0
+    end
 
     -- SHIM: FXServer sets the global `source` to the invoking player's net-id
     -- for net events. We expose it as a global for compatibility.
@@ -70,6 +78,19 @@ function AddEventHandler(name, fn)
     return { __cfx_event = true, name = name, id = id }
 end
 
+function RegisterNetEvent(name, cb)
+    assert(type(name) == "string", "RegisterNetEvent: name must be a string")
+    _safeNet[name] = true
+
+    if cb ~= nil then
+        assert(type(cb) == "function", "RegisterNetEvent: callback must be a function")
+        return AddEventHandler(name, cb)
+    end
+    return nil
+end
+
+RegisterServerEvent = RegisterNetEvent
+
 -- ---------------------------------------------------------------------------
 -- Public: RemoveEventHandler(handle)
 -- SHIM: FXServer's handle is a userdata with a C-side __gc that unregisters.
@@ -99,7 +120,7 @@ end
 function TriggerEvent(name, ...)
     assert(type(name) == "string", "TriggerEvent: name must be a string")
     -- SHIM: local events have source = "" (empty string) in FXServer.
-    _fireEvent(name, "", ...)
+    _fireEvent(name, "", false, ...)
 end
 
 -- ---------------------------------------------------------------------------
@@ -116,7 +137,7 @@ function TriggerNetEvent(name, ...)
     print(string.format(
         "[cfxlua][STUB] TriggerNetEvent('%s') — no network; firing locally", name
     ))
-    _fireEvent(name, -1, ...)
+    _fireEvent(name, -1, false, ...)
 end
 
 -- ---------------------------------------------------------------------------
@@ -131,7 +152,7 @@ function TriggerServerEvent(name, ...)
     print(string.format(
         "[cfxlua][STUB] TriggerServerEvent('%s') — no network; firing locally", name
     ))
-    _fireEvent(name, 1, ...)
+    _fireEvent(name, 1, true, ...)
 end
 
 -- ---------------------------------------------------------------------------
@@ -152,7 +173,11 @@ end
 -- (e.g. onResourceStart, onServerResourceStart)
 -- ---------------------------------------------------------------------------
 function __cfx_internal_triggerEvent(name, src, ...)
-    _fireEvent(name, src, ...)
+    _fireEvent(name, src, false, ...)
+end
+
+function __cfx_internal_triggerNetEvent(name, src, ...)
+    _fireEvent(name, src, true, ...)
 end
 
 -- ---------------------------------------------------------------------------

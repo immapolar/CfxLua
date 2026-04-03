@@ -81,7 +81,7 @@ do
         name   = "Test Resource",
         active = true,
         tags   = { "server", "lua", "fivem" },
-        meta   = { version = "1.0.0", build = 42 },
+        meta   = { version = "1.0.1", build = 42 },
     }
     local enc1 = json.encode(original)
     local dec  = json.decode(enc1)

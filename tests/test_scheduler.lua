@@ -98,6 +98,20 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- Test 5b: SetTimeout handle can be cancelled with ClearTimeout
+-- ---------------------------------------------------------------------------
+do
+    local fired = false
+    local h = SetTimeout(30, function()
+        fired = true
+    end)
+    local cancelled = ClearTimeout(h)
+    RunSchedulerUntilDone(1000)
+    T.ok(cancelled, "ClearTimeout returns true for valid handle")
+    T.ok(not fired, "ClearTimeout prevents timeout callback execution")
+end
+
+-- ---------------------------------------------------------------------------
 -- Test 6: Citizen.SetInterval repeats
 -- ---------------------------------------------------------------------------
 do

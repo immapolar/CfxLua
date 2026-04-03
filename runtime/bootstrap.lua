@@ -119,6 +119,8 @@ end
 _G.__cfx_scheduler_wait = Wait
 _G.__cfx_in_thread = false
 _load("stubs.lua")
+_load("stubs_fivem_server.lua")
+_load("fxserver.lua")
 
 -- ---------------------------------------------------------------------------
 -- Phase 3: Emit synthetic lifecycle events
@@ -178,6 +180,34 @@ end)
 local MAX_IDLE_MS   = 30000   -- exit if no threads for 30 s (deadlock guard)
 local TICK_FLOOR_MS = 1       -- minimum sleep between ticks (prevents busy-spin)
 local idleStart     = nil
+local _isWindows = package.config:sub(1, 1) == "\\"
+
+local function _sleepMs(ms)
+    if ms <= 0 then return end
+
+    if _isWindows then
+        -- Use PowerShell sleep for millisecond precision on Windows.
+        local cmd = string.format(
+            'powershell -NoProfile -NonInteractive -Command "Start-Sleep -Milliseconds %d"',
+            math.floor(ms)
+        )
+        local ok = os.execute(cmd)
+        if not ok then
+            -- Fallback: busy-wait if PowerShell isn't available.
+            local t0 = GetGameTimer()
+            while (GetGameTimer() - t0) < ms do end
+        end
+        return
+    end
+
+    local sleepSec = ms / 1000
+    local ok = os.execute(string.format("sleep %.4f 2>/dev/null", sleepSec))
+    if not ok then
+        -- Fallback for minimal environments.
+        local t0 = GetGameTimer()
+        while (GetGameTimer() - t0) < ms do end
+    end
+end
 
 while true do
     local nextWake = ScheduleResourceTick()
@@ -199,13 +229,9 @@ while true do
     if nextWake then
         local sleepMs = math.max(TICK_FLOOR_MS, nextWake - GetGameTimer())
         if sleepMs > 2 then
-            -- Use os.execute sleep for longer waits to avoid 100% CPU
             -- SHIM: Real FXServer sleeps in the C++ event loop (libuv).
-            -- On POSIX, `sleep 0.001` has ~1ms resolution.
-            -- On systems without fractional sleep, fall back to a busy-wait.
-            local sleepSec = sleepMs / 1000
-            -- Try `sleep` with fractional seconds first (GNU coreutils / macOS)
-            os.execute(string.format("sleep %.4f 2>/dev/null || true", sleepSec))
+            -- Use platform-appropriate sleep without shell-error spam.
+            _sleepMs(sleepMs)
         end
         -- For sub-2ms sleeps: busy-wait (acceptable for test workloads)
     end

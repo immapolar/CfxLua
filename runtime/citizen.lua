@@ -60,7 +60,22 @@ Citizen.InvokeNativeByHash = Citizen.InvokeNative
 -- print with an optional prefix.
 -- ---------------------------------------------------------------------------
 function Citizen.Trace(msg)
-    io.write(tostring(msg))
+    io.write((function(s)
+        s = tostring(s)
+        local ansi = {
+            ["0"] = "\27[0m",   -- reset/default
+            ["1"] = "\27[31m",  -- red
+            ["2"] = "\27[32m",  -- green
+            ["3"] = "\27[33m",  -- yellow
+            ["4"] = "\27[34m",  -- blue
+            ["5"] = "\27[36m",  -- cyan
+            ["6"] = "\27[35m",  -- magenta
+            ["7"] = "\27[37m",  -- white
+            ["8"] = "\27[90m",  -- bright black / gray
+            ["9"] = "\27[91m",  -- bright red
+        }
+        return (s:gsub("%^(%d)", function(d) return ansi[d] or "" end))
+    end)(msg))
     io.flush()
 end
 
@@ -297,20 +312,73 @@ end
 
 -- ---------------------------------------------------------------------------
 -- PerformHttpRequest
--- SHIM: FXServer routes this through libcurl. Here we emit a warning and call
--- the callback with an error so callers can handle it gracefully.
+-- SHIM: Frontend compatibility wrapper that prefers backend runtime natives:
+--   PerformHttpRequestInternalEx / PerformHttpRequestInternal.
+-- This keeps the public API 1:1 while backend transport is runtime-provided.
 -- ---------------------------------------------------------------------------
-function PerformHttpRequest(url, callback, method, data, headers)
-    method  = method  or "GET"
-    headers = headers or {}
-    print(string.format(
-        "[cfxlua][STUB] PerformHttpRequest('%s %s') — no HTTP in standalone",
-        method, url
-    ))
-    -- Schedule callback asynchronously to match real async behaviour
-    Citizen.SetTimeout(0, function()
-        callback(0, nil, {}, "standalone: HTTP not available")
+local _httpDispatch = {}
+local _httpDispatchInstalled = false
+
+local function _ensureHttpDispatch()
+    if _httpDispatchInstalled then return end
+    _httpDispatchInstalled = true
+
+    AddEventHandler("__cfx_internal:httpResponse", function(token, status, body, headers, errorData)
+        local cb = _httpDispatch[token]
+        if cb then
+            _httpDispatch[token] = nil
+            cb(status, body, headers or {}, errorData)
+        end
     end)
+end
+
+function PerformHttpRequest(url, callback, method, data, headers, options)
+    method  = method or "GET"
+    headers = headers or {}
+    options = options or {}
+
+    if type(PerformHttpRequestInternalEx) == "function" then
+        _ensureHttpDispatch()
+
+        local req = {
+            url = url,
+            method = method,
+            data = data or "",
+            headers = headers,
+            followLocation = (options.followLocation ~= false),
+            timeout = options.timeout,
+        }
+
+        local token = PerformHttpRequestInternalEx(req)
+        if token and token ~= -1 then
+            _httpDispatch[token] = callback
+        else
+            callback(0, nil, {}, "Failure handling HTTP request")
+        end
+        return
+    end
+
+    if type(PerformHttpRequestInternal) == "function" then
+        _ensureHttpDispatch()
+        local token = PerformHttpRequestInternal(url, method, data or "", headers)
+        if token and token ~= -1 then
+            _httpDispatch[token] = callback
+        else
+            callback(0, nil, {}, "Failure handling HTTP request")
+        end
+        return
+    end
+
+    callback(0, nil, {}, "standalone: HTTP backend unavailable")
+end
+
+function PerformHttpRequestAwait(url, method, data, headers, options)
+    local p = Promise.new()
+    PerformHttpRequest(url, function(...)
+        p:resolve({ ... })
+    end, method, data, headers, options)
+    local out = Citizen.Await(p)
+    return table.unpack(out)
 end
 
 -- ---------------------------------------------------------------------------
@@ -320,11 +388,30 @@ end
 -- ---------------------------------------------------------------------------
 local _rawPrint = print
 function print(...)
+    local function _renderFiveMColors(text)
+        local ansi = {
+            ["0"] = "\27[0m",
+            ["1"] = "\27[31m",
+            ["2"] = "\27[32m",
+            ["3"] = "\27[33m",
+            ["4"] = "\27[34m",
+            ["5"] = "\27[36m",
+            ["6"] = "\27[35m",
+            ["7"] = "\27[37m",
+            ["8"] = "\27[90m",
+            ["9"] = "\27[91m",
+        }
+        text = tostring(text):gsub("%^(%d)", function(d)
+            return ansi[d] or ""
+        end)
+        return text
+    end
+
     local parts = {}
     for i = 1, select("#", ...) do
-        parts[i] = tostring(select(i, ...))
+        parts[i] = _renderFiveMColors(select(i, ...))
     end
-    _rawPrint(string.format("[%s] %s", GetCurrentResourceName(), table.concat(parts, "\t")))
+    _rawPrint(string.format("[%s] %s\27[0m", GetCurrentResourceName(), table.concat(parts, "\t")))
 end
 
 -- Restore raw print access if needed

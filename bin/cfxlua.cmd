@@ -75,12 +75,12 @@ if "%CFXLUA_CP%"=="65001" goto :show_version_utf8
 goto :show_version_ascii
 
 :show_version_utf8
-echo CfxLua 1.0.0  ·  © 2026 Polaris Naz
+echo CfxLua 1.0.1  ·  © 2026 Polaris Naz
 <nul set /p "=LuaGLM 5.4  ·  Cfx.re"
 goto :show_version_done
 
 :show_version_ascii
-echo CfxLua 1.0.0  -  (c) 2026 Polaris Naz
+echo CfxLua 1.0.1  -  (c) 2026 Polaris Naz
 <nul set /p "=LuaGLM 5.4  -  Cfx.re"
 
 :show_version_done
@@ -92,12 +92,12 @@ if "%CFXLUA_CP%"=="65001" goto :show_help_utf8
 goto :show_help_ascii
 
 :show_help_utf8
-echo CfxLua 1.0.0  ·  © 2026 Polaris Naz
+echo CfxLua 1.0.1  ·  © 2026 Polaris Naz
 echo LuaGLM 5.4  ·  Cfx.re
 goto :show_help_body
 
 :show_help_ascii
-echo CfxLua 1.0.0  -  (c) 2026 Polaris Naz
+echo CfxLua 1.0.1  -  (c) 2026 Polaris Naz
 echo LuaGLM 5.4  -  Cfx.re
 
 :show_help_body
@@ -131,6 +131,10 @@ if defined CFXLUA_RESOURCE (
 
 set "CFXLUA_RESOURCE_NAME=%SCRIPT_RESOURCE%"
 
+rem Force UTF-8 output while script runs to preserve block/line graphics.
+chcp 65001 >NUL
+
 set "INJECT=__cfx_bootstrapPath = [[%PROJECT_DIR%]]"
 "%VM_BIN%" -e "%INJECT%" "%BOOTSTRAP%" %*
-exit /b %ERRORLEVEL%
+set "CFXLUA_EXIT=%ERRORLEVEL%"
+exit /b %CFXLUA_EXIT%
